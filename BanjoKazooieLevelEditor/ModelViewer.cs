@@ -18,6 +18,8 @@ using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 using System.Xml;
+using BanjoKazooieLevelEditor.Serialization;
+using Assimp.Unmanaged;
 
 namespace BanjoKazooieLevelEditor
 {
@@ -61,7 +63,7 @@ namespace BanjoKazooieLevelEditor
     private bool sceneClick;
     private bool RotateSceneClick;
     private bool forceRedraw;
-    private ObjectData o;
+    private ObjectData ObjectModelData;
     private BKAnimation animation;
     private bool drawSkeleton;
     private int levelPointer;
@@ -96,7 +98,9 @@ namespace BanjoKazooieLevelEditor
     private Label lbl_glVersion;
     private GLControl BKOpenGLC;
     private ToolStripMenuItem importColladadaeToolStripMenuItem;
-    private OpenFileDialog openFileDialog2;
+        private ToolStripMenuItem exportToolStripMenuItem;
+        private ToolStripSeparator toolStripSeparator1;
+        private OpenFileDialog openFileDialog2;
 
     public ModelViewer(
       ref byte[] rom_,
@@ -323,9 +327,9 @@ namespace BanjoKazooieLevelEditor
       this.core.ClearScreenAndLoadIdentity();
       GL.PushMatrix();
       GL.LoadMatrix(this.BBCamera.GetWorldToViewMatrix());
-      GL.EnableClientState(EnableCap.VertexArray);
-      GL.EnableClientState(EnableCap.ColorArray);
-      GL.EnableClientState(EnableCap.TextureCoordArray);
+      GL.EnableClientState(ArrayCap.VertexArray);// EnableCap.VertexArray);
+      GL.EnableClientState(ArrayCap.ColorArray); //EnableCap.ColorArray);
+      GL.EnableClientState(ArrayCap.TextureCoordArray); //EnableCap.TextureCoordArray);
       if (this.animation != null)
       {
         int index = this.frame_trackBar.Value - this.frame_trackBar.Minimum;
@@ -399,9 +403,9 @@ namespace BanjoKazooieLevelEditor
         GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
         GL.BindBuffer(BufferTarget.ElementArrayBuffer, 0);
       }
-      GL.DisableClientState(EnableCap.VertexArray);
-      GL.DisableClientState(EnableCap.ColorArray);
-      GL.DisableClientState(EnableCap.TextureCoordArray);
+      GL.DisableClientState(ArrayCap.VertexArray);
+      GL.DisableClientState(ArrayCap.ColorArray);
+      GL.DisableClientState(ArrayCap.TextureCoordArray);
       GL.PopMatrix();
       this.core.SetView(this.BKOpenGLC.Height, this.BKOpenGLC.Width);
       this.BKOpenGLC.SwapBuffers();
@@ -765,7 +769,7 @@ namespace BanjoKazooieLevelEditor
 
     private void boneWidth_slider_Scroll(object sender, EventArgs e)
     {
-      if (this.o == null || this.objects_dgv.SelectedRows.Count <= 0 || !File.Exists(this.tmpDir + this.o.pointer.ToString("x")))
+      if (this.ObjectModelData == null || this.objects_dgv.SelectedRows.Count <= 0 || !File.Exists(this.tmpDir + this.ObjectModelData.pointer.ToString("x")))
         return;
       this.forceRedraw = true;
     }
@@ -789,22 +793,22 @@ namespace BanjoKazooieLevelEditor
       this.loadReplacementModelToolStripMenuItem.Enabled = true;
       this.saveToolStripMenuItem.Enabled = true;
       this.replacementModel = "";
-      this.o = this.models[(int) this.objects_dgv.SelectedRows[0].Cells[0].Value];
+      this.ObjectModelData = this.models[(int) this.objects_dgv.SelectedRows[0].Cells[0].Value];
       try
       {
-        this.decompressFile(this.o.pointer);
+        this.decompressFile(this.ObjectModelData.pointer);
       }
       catch (Exception ex)
       {
       }
-      if (!File.Exists(this.tmpDir + this.o.pointer.ToString("x")))
+      if (!File.Exists(this.tmpDir + this.ObjectModelData.pointer.ToString("x")))
         return;
-      this.fileInfo_lbl.Text = "File Info: " + this.o.pointer.ToString("x");
+      this.fileInfo_lbl.Text = "File Info: " + this.ObjectModelData.pointer.ToString("x");
       this.DisableAnimationView();
       this.EnableAnimationView();
-      this.PrepareModel(this.o.pointer);
+      this.PrepareModel(this.ObjectModelData.pointer);
       this.core.GetBuffersFromBKModelFile(ref this.bytesInFile, ref this.vboVertexHandle, ref this.vertexData, ref this.vboColorHandle, ref this.vboTexCoordHandle, ref this.iboHandles, ref this.iboData, ref this.textures);
-      this.DisplayAnimationFiles(this.o.pointer);
+      this.DisplayAnimationFiles(this.ObjectModelData.pointer);
       this.forceRedraw = true;
     }
 
@@ -824,7 +828,7 @@ namespace BanjoKazooieLevelEditor
       if (this.levels_dgv.SelectedRows.Count <= 0)
         return;
       this.objects_dgv.ClearSelection();
-      this.o = (ObjectData) null;
+      this.ObjectModelData = (ObjectData) null;
       this.loadReplacementModelToolStripMenuItem.Enabled = false;
       this.saveToolStripMenuItem.Enabled = false;
       this.replacementModel = "";
@@ -1112,7 +1116,7 @@ namespace BanjoKazooieLevelEditor
       this.objects_dgv.ClearSelection();
       this.levels_dgv.ClearSelection();
       this.core.DeleteDL(this.CurrentModelDL);
-      this.o = (ObjectData) null;
+      this.ObjectModelData = (ObjectData) null;
       this.levelPointer = 0;
     }
 
@@ -1184,7 +1188,7 @@ namespace BanjoKazooieLevelEditor
           {
             this.RenderFrame(startFrame);
             Stopwatch stopwatch = Stopwatch.StartNew();
-            if (this.o != null)
+            if (this.ObjectModelData != null)
             {
               if (this.isDLAnimation)
                 this.vertexFrames.Add(this.core.DrawDLAnimationFrameVBO(ref this.bytesInFile, this.skeleton, this.translationFactor, this.vertexData));
@@ -1272,12 +1276,12 @@ namespace BanjoKazooieLevelEditor
 
     private void exportToGeObjToolStripMenuItem_Click(object sender, EventArgs e)
     {
-      if (this.folderBrowserDialog.ShowDialog() != DialogResult.OK || this.levelPointer == 0 && this.o == null)
+      if (this.folderBrowserDialog.ShowDialog() != DialogResult.OK || this.levelPointer == 0 && this.ObjectModelData == null)
         return;
       string str = "";
       string mtl = "";
       string outDir = this.folderBrowserDialog.SelectedPath + "\\";
-      int pntr_ = this.levelPointer == 0 ? this.o.pointer : this.levelPointer;
+      int pntr_ = this.levelPointer == 0 ? this.ObjectModelData.pointer : this.levelPointer;
       this.core.TranslateToGEOBJ(this.tmpDir, outDir, pntr_, ref str, ref mtl);
       if (this.skeleton != null)
         str += GEOBJ.convertSkeleton(this.skeleton);
@@ -1292,10 +1296,10 @@ namespace BanjoKazooieLevelEditor
 
     private void exportToColladadaeToolStripMenuItem_Click(object sender, EventArgs e)
     {
-      if (this.folderBrowserDialog.ShowDialog() != DialogResult.OK || this.levelPointer == 0 && this.o == null)
+      if (this.folderBrowserDialog.ShowDialog() != DialogResult.OK || this.levelPointer == 0 && this.ObjectModelData == null)
         return;
       string outDir = this.folderBrowserDialog.SelectedPath + "\\";
-      int pntr_ = this.levelPointer == 0 ? this.o.pointer : this.levelPointer;
+      int pntr_ = this.levelPointer == 0 ? this.ObjectModelData.pointer : this.levelPointer;
       string filename = outDir + pntr_.ToString("x") + ".dae";
       this.core.TranslateToCollada(this.tmpDir, outDir, pntr_, this.skeleton, filename);
       int num = (int) MessageBox.Show("Export Complete");
@@ -1378,6 +1382,8 @@ namespace BanjoKazooieLevelEditor
             this.lbl_glVersion = new System.Windows.Forms.Label();
             this.BKOpenGLC = new OpenTK.GLControl();
             this.openFileDialog2 = new System.Windows.Forms.OpenFileDialog();
+            this.exportToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.CamSpeed_tb)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.objects_dgv)).BeginInit();
@@ -1396,8 +1402,7 @@ namespace BanjoKazooieLevelEditor
             this.fileToolStripMenuItem});
             this.menuStrip1.Location = new System.Drawing.Point(0, 0);
             this.menuStrip1.Name = "menuStrip1";
-            this.menuStrip1.Padding = new System.Windows.Forms.Padding(8, 2, 0, 2);
-            this.menuStrip1.Size = new System.Drawing.Size(1573, 28);
+            this.menuStrip1.Size = new System.Drawing.Size(1180, 24);
             this.menuStrip1.TabIndex = 11;
             this.menuStrip1.Text = "menuStrip1";
             // 
@@ -1406,38 +1411,40 @@ namespace BanjoKazooieLevelEditor
             this.fileToolStripMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.loadReplacementModelToolStripMenuItem,
             this.saveToolStripMenuItem,
+            this.exportToolStripMenuItem,
+            this.toolStripSeparator1,
             this.exportToGeObjToolStripMenuItem,
             this.exportToColladadaeToolStripMenuItem,
             this.importColladadaeToolStripMenuItem});
             this.fileToolStripMenuItem.Name = "fileToolStripMenuItem";
-            this.fileToolStripMenuItem.Size = new System.Drawing.Size(44, 24);
+            this.fileToolStripMenuItem.Size = new System.Drawing.Size(37, 20);
             this.fileToolStripMenuItem.Text = "File";
             // 
             // loadReplacementModelToolStripMenuItem
             // 
             this.loadReplacementModelToolStripMenuItem.Name = "loadReplacementModelToolStripMenuItem";
-            this.loadReplacementModelToolStripMenuItem.Size = new System.Drawing.Size(255, 26);
+            this.loadReplacementModelToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
             this.loadReplacementModelToolStripMenuItem.Text = "Load Replacement Model";
             this.loadReplacementModelToolStripMenuItem.Click += new System.EventHandler(this.loadReplacementModelToolStripMenuItem_Click);
             // 
             // saveToolStripMenuItem
             // 
             this.saveToolStripMenuItem.Name = "saveToolStripMenuItem";
-            this.saveToolStripMenuItem.Size = new System.Drawing.Size(255, 26);
+            this.saveToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
             this.saveToolStripMenuItem.Text = "Save to Rom";
             this.saveToolStripMenuItem.Click += new System.EventHandler(this.saveToolStripMenuItem_Click);
             // 
             // exportToGeObjToolStripMenuItem
             // 
             this.exportToGeObjToolStripMenuItem.Name = "exportToGeObjToolStripMenuItem";
-            this.exportToGeObjToolStripMenuItem.Size = new System.Drawing.Size(255, 26);
+            this.exportToGeObjToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
             this.exportToGeObjToolStripMenuItem.Text = "Export to geObj";
             this.exportToGeObjToolStripMenuItem.Click += new System.EventHandler(this.exportToGeObjToolStripMenuItem_Click);
             // 
             // exportToColladadaeToolStripMenuItem
             // 
             this.exportToColladadaeToolStripMenuItem.Name = "exportToColladadaeToolStripMenuItem";
-            this.exportToColladadaeToolStripMenuItem.Size = new System.Drawing.Size(255, 26);
+            this.exportToColladadaeToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
             this.exportToColladadaeToolStripMenuItem.Text = "Export to Collada (.dae)";
             this.exportToColladadaeToolStripMenuItem.Visible = false;
             this.exportToColladadaeToolStripMenuItem.Click += new System.EventHandler(this.exportToColladadaeToolStripMenuItem_Click);
@@ -1445,7 +1452,7 @@ namespace BanjoKazooieLevelEditor
             // importColladadaeToolStripMenuItem
             // 
             this.importColladadaeToolStripMenuItem.Name = "importColladadaeToolStripMenuItem";
-            this.importColladadaeToolStripMenuItem.Size = new System.Drawing.Size(255, 26);
+            this.importColladadaeToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
             this.importColladadaeToolStripMenuItem.Text = "Import Collada (.dae)";
             this.importColladadaeToolStripMenuItem.Visible = false;
             this.importColladadaeToolStripMenuItem.Click += new System.EventHandler(this.importColladadaeToolStripMenuItem_Click);
@@ -1464,10 +1471,9 @@ namespace BanjoKazooieLevelEditor
             this.label4.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.label4.AutoSize = true;
             this.label4.BackColor = System.Drawing.SystemColors.ActiveCaption;
-            this.label4.Location = new System.Drawing.Point(1260, 7);
-            this.label4.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label4.Location = new System.Drawing.Point(945, 6);
             this.label4.Name = "label4";
-            this.label4.Size = new System.Drawing.Size(102, 17);
+            this.label4.Size = new System.Drawing.Size(77, 13);
             this.label4.TabIndex = 61;
             this.label4.Text = "Camera Speed";
             // 
@@ -1477,12 +1483,11 @@ namespace BanjoKazooieLevelEditor
             this.CamSpeed_tb.AutoSize = false;
             this.CamSpeed_tb.BackColor = System.Drawing.SystemColors.ActiveCaption;
             this.CamSpeed_tb.Cursor = System.Windows.Forms.Cursors.Hand;
-            this.CamSpeed_tb.Location = new System.Drawing.Point(1373, 2);
-            this.CamSpeed_tb.Margin = new System.Windows.Forms.Padding(4);
+            this.CamSpeed_tb.Location = new System.Drawing.Point(1030, 2);
             this.CamSpeed_tb.Maximum = 100;
             this.CamSpeed_tb.Minimum = 5;
             this.CamSpeed_tb.Name = "CamSpeed_tb";
-            this.CamSpeed_tb.Size = new System.Drawing.Size(200, 23);
+            this.CamSpeed_tb.Size = new System.Drawing.Size(150, 19);
             this.CamSpeed_tb.TabIndex = 60;
             this.CamSpeed_tb.TickFrequency = 5;
             this.CamSpeed_tb.Value = 30;
@@ -1499,12 +1504,11 @@ namespace BanjoKazooieLevelEditor
             this.objects_dgv.BackgroundColor = System.Drawing.Color.White;
             this.objects_dgv.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.objects_dgv.EditMode = System.Windows.Forms.DataGridViewEditMode.EditProgrammatically;
-            this.objects_dgv.Location = new System.Drawing.Point(16, 33);
-            this.objects_dgv.Margin = new System.Windows.Forms.Padding(4);
+            this.objects_dgv.Location = new System.Drawing.Point(12, 27);
             this.objects_dgv.Name = "objects_dgv";
             this.objects_dgv.ReadOnly = true;
             this.objects_dgv.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
-            this.objects_dgv.Size = new System.Drawing.Size(237, 379);
+            this.objects_dgv.Size = new System.Drawing.Size(178, 308);
             this.objects_dgv.TabIndex = 67;
             this.objects_dgv.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.objects_dgv_CellContentClick);
             this.objects_dgv.SelectionChanged += new System.EventHandler(this.objects_dgv_SelectionChanged);
@@ -1519,12 +1523,11 @@ namespace BanjoKazooieLevelEditor
             this.levels_dgv.BackgroundColor = System.Drawing.Color.White;
             this.levels_dgv.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.levels_dgv.EditMode = System.Windows.Forms.DataGridViewEditMode.EditProgrammatically;
-            this.levels_dgv.Location = new System.Drawing.Point(16, 420);
-            this.levels_dgv.Margin = new System.Windows.Forms.Padding(4);
+            this.levels_dgv.Location = new System.Drawing.Point(12, 341);
             this.levels_dgv.Name = "levels_dgv";
             this.levels_dgv.ReadOnly = true;
             this.levels_dgv.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
-            this.levels_dgv.Size = new System.Drawing.Size(237, 222);
+            this.levels_dgv.Size = new System.Drawing.Size(178, 180);
             this.levels_dgv.TabIndex = 68;
             this.levels_dgv.SelectionChanged += new System.EventHandler(this.levels_dgv_SelectionChanged);
             // 
@@ -1537,12 +1540,11 @@ namespace BanjoKazooieLevelEditor
             this.animation_dgv.BackgroundColor = System.Drawing.Color.FromArgb(((int)(((byte)(114)))), ((int)(((byte)(114)))), ((int)(((byte)(114)))));
             this.animation_dgv.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.animation_dgv.EditMode = System.Windows.Forms.DataGridViewEditMode.EditProgrammatically;
-            this.animation_dgv.Location = new System.Drawing.Point(4, 9);
-            this.animation_dgv.Margin = new System.Windows.Forms.Padding(4);
+            this.animation_dgv.Location = new System.Drawing.Point(3, 7);
             this.animation_dgv.Name = "animation_dgv";
             this.animation_dgv.ReadOnly = true;
             this.animation_dgv.SelectionMode = System.Windows.Forms.DataGridViewSelectionMode.FullRowSelect;
-            this.animation_dgv.Size = new System.Drawing.Size(237, 132);
+            this.animation_dgv.Size = new System.Drawing.Size(178, 107);
             this.animation_dgv.TabIndex = 69;
             this.animation_dgv.CellClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.animation_dgv_CellClick);
             this.animation_dgv.SelectionChanged += new System.EventHandler(this.animation_dgv_SelectionChanged);
@@ -1556,10 +1558,9 @@ namespace BanjoKazooieLevelEditor
             // 
             this.frameNo_lbl.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
             this.frameNo_lbl.AutoSize = true;
-            this.frameNo_lbl.Location = new System.Drawing.Point(4, 14);
-            this.frameNo_lbl.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.frameNo_lbl.Location = new System.Drawing.Point(3, 11);
             this.frameNo_lbl.Name = "frameNo_lbl";
-            this.frameNo_lbl.Size = new System.Drawing.Size(52, 17);
+            this.frameNo_lbl.Size = new System.Drawing.Size(39, 13);
             this.frameNo_lbl.TabIndex = 76;
             this.frameNo_lbl.Text = "frame: ";
             this.frameNo_lbl.Click += new System.EventHandler(this.frameNo_lbl_Click);
@@ -1572,10 +1573,9 @@ namespace BanjoKazooieLevelEditor
             this.panel1.Controls.Add(this.panel2);
             this.panel1.Controls.Add(this.frame_trackBar);
             this.panel1.Controls.Add(this.animation_dgv);
-            this.panel1.Location = new System.Drawing.Point(261, 494);
-            this.panel1.Margin = new System.Windows.Forms.Padding(4);
+            this.panel1.Location = new System.Drawing.Point(196, 401);
             this.panel1.Name = "panel1";
-            this.panel1.Size = new System.Drawing.Size(1296, 148);
+            this.panel1.Size = new System.Drawing.Size(972, 120);
             this.panel1.TabIndex = 77;
             // 
             // panel2
@@ -1588,28 +1588,25 @@ namespace BanjoKazooieLevelEditor
             this.panel2.Controls.Add(this.frame_spin);
             this.panel2.Controls.Add(this.play_btn);
             this.panel2.Controls.Add(this.stop_btn);
-            this.panel2.Location = new System.Drawing.Point(249, 105);
-            this.panel2.Margin = new System.Windows.Forms.Padding(4);
+            this.panel2.Location = new System.Drawing.Point(187, 85);
             this.panel2.Name = "panel2";
-            this.panel2.Size = new System.Drawing.Size(1041, 36);
+            this.panel2.Size = new System.Drawing.Size(781, 29);
             this.panel2.TabIndex = 79;
             // 
             // fileInfo_lbl
             // 
             this.fileInfo_lbl.AutoSize = true;
-            this.fileInfo_lbl.Location = new System.Drawing.Point(253, 10);
-            this.fileInfo_lbl.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.fileInfo_lbl.Location = new System.Drawing.Point(190, 8);
             this.fileInfo_lbl.Name = "fileInfo_lbl";
-            this.fileInfo_lbl.Size = new System.Drawing.Size(0, 17);
+            this.fileInfo_lbl.Size = new System.Drawing.Size(0, 13);
             this.fileInfo_lbl.TabIndex = 81;
             // 
             // label1
             // 
             this.label1.AutoSize = true;
-            this.label1.Location = new System.Drawing.Point(161, 14);
-            this.label1.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.label1.Location = new System.Drawing.Point(121, 11);
             this.label1.Name = "label1";
-            this.label1.Size = new System.Drawing.Size(34, 17);
+            this.label1.Size = new System.Drawing.Size(27, 13);
             this.label1.TabIndex = 80;
             this.label1.Text = "FPS";
             // 
@@ -1617,10 +1614,9 @@ namespace BanjoKazooieLevelEditor
             // 
             this.fps_tb.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(114)))), ((int)(((byte)(114)))), ((int)(((byte)(114)))));
             this.fps_tb.ForeColor = System.Drawing.SystemColors.Info;
-            this.fps_tb.Location = new System.Drawing.Point(205, 7);
-            this.fps_tb.Margin = new System.Windows.Forms.Padding(4);
+            this.fps_tb.Location = new System.Drawing.Point(154, 6);
             this.fps_tb.Name = "fps_tb";
-            this.fps_tb.Size = new System.Drawing.Size(39, 22);
+            this.fps_tb.Size = new System.Drawing.Size(30, 20);
             this.fps_tb.TabIndex = 79;
             this.fps_tb.Text = "60";
             this.fps_tb.TextChanged += new System.EventHandler(this.fps_tb_TextChanged);
@@ -1631,10 +1627,9 @@ namespace BanjoKazooieLevelEditor
             this.frame_spin.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(114)))), ((int)(((byte)(114)))), ((int)(((byte)(114)))));
             this.frame_spin.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.frame_spin.ForeColor = System.Drawing.SystemColors.Info;
-            this.frame_spin.Location = new System.Drawing.Point(64, 7);
-            this.frame_spin.Margin = new System.Windows.Forms.Padding(4);
+            this.frame_spin.Location = new System.Drawing.Point(48, 6);
             this.frame_spin.Name = "frame_spin";
-            this.frame_spin.Size = new System.Drawing.Size(68, 22);
+            this.frame_spin.Size = new System.Drawing.Size(51, 20);
             this.frame_spin.TabIndex = 78;
             this.frame_spin.ValueChanged += new System.EventHandler(this.frame_spin_ValueChanged);
             // 
@@ -1647,10 +1642,9 @@ namespace BanjoKazooieLevelEditor
             this.play_btn.FlatAppearance.BorderSize = 0;
             this.play_btn.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.play_btn.Image = global::BanjoKazooieLevelEditor.Properties.Resources.play2;
-            this.play_btn.Location = new System.Drawing.Point(960, 2);
-            this.play_btn.Margin = new System.Windows.Forms.Padding(4);
+            this.play_btn.Location = new System.Drawing.Point(720, 2);
             this.play_btn.Name = "play_btn";
-            this.play_btn.Size = new System.Drawing.Size(29, 27);
+            this.play_btn.Size = new System.Drawing.Size(22, 22);
             this.play_btn.TabIndex = 74;
             this.play_btn.UseVisualStyleBackColor = false;
             this.play_btn.Click += new System.EventHandler(this.play_btn_Click);
@@ -1662,10 +1656,10 @@ namespace BanjoKazooieLevelEditor
             this.stop_btn.FlatAppearance.BorderSize = 0;
             this.stop_btn.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
             this.stop_btn.Image = ((System.Drawing.Image)(resources.GetObject("stop_btn.Image")));
-            this.stop_btn.Location = new System.Drawing.Point(993, 2);
+            this.stop_btn.Location = new System.Drawing.Point(745, 2);
             this.stop_btn.Margin = new System.Windows.Forms.Padding(0);
             this.stop_btn.Name = "stop_btn";
-            this.stop_btn.Size = new System.Drawing.Size(29, 27);
+            this.stop_btn.Size = new System.Drawing.Size(22, 22);
             this.stop_btn.TabIndex = 75;
             this.stop_btn.UseVisualStyleBackColor = false;
             this.stop_btn.Click += new System.EventHandler(this.stop_btn_Click);
@@ -1676,13 +1670,12 @@ namespace BanjoKazooieLevelEditor
             this.frame_trackBar.BarColor = System.Drawing.Color.FromArgb(((int)(((byte)(114)))), ((int)(((byte)(114)))), ((int)(((byte)(114)))));
             this.frame_trackBar.Cursor = System.Windows.Forms.Cursors.Arrow;
             this.frame_trackBar.Font = new System.Drawing.Font("Microsoft Sans Serif", 7F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.frame_trackBar.Location = new System.Drawing.Point(249, 9);
-            this.frame_trackBar.Margin = new System.Windows.Forms.Padding(4);
+            this.frame_trackBar.Location = new System.Drawing.Point(187, 7);
             this.frame_trackBar.Maximum = 100;
             this.frame_trackBar.MaximumValueSide = BanjoKazooieLevelEditor.Poles.Right;
             this.frame_trackBar.Minimum = 0;
             this.frame_trackBar.Name = "frame_trackBar";
-            this.frame_trackBar.Size = new System.Drawing.Size(1041, 89);
+            this.frame_trackBar.Size = new System.Drawing.Size(781, 72);
             this.frame_trackBar.TabIndex = 77;
             this.frame_trackBar.TrackerBorderColor = System.Drawing.Color.Black;
             this.frame_trackBar.TrackerColor = System.Drawing.Color.Turquoise;
@@ -1695,10 +1688,9 @@ namespace BanjoKazooieLevelEditor
             this.lbl_glVersion.AutoSize = true;
             this.lbl_glVersion.BackColor = System.Drawing.SystemColors.ActiveCaption;
             this.lbl_glVersion.ForeColor = System.Drawing.Color.White;
-            this.lbl_glVersion.Location = new System.Drawing.Point(257, 7);
-            this.lbl_glVersion.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.lbl_glVersion.Location = new System.Drawing.Point(193, 6);
             this.lbl_glVersion.Name = "lbl_glVersion";
-            this.lbl_glVersion.Size = new System.Drawing.Size(122, 17);
+            this.lbl_glVersion.Size = new System.Drawing.Size(91, 13);
             this.lbl_glVersion.TabIndex = 78;
             this.lbl_glVersion.Text = "OpenGL Version: ";
             // 
@@ -1708,10 +1700,10 @@ namespace BanjoKazooieLevelEditor
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
             this.BKOpenGLC.BackColor = System.Drawing.Color.Black;
-            this.BKOpenGLC.Location = new System.Drawing.Point(265, 33);
-            this.BKOpenGLC.Margin = new System.Windows.Forms.Padding(5);
+            this.BKOpenGLC.Location = new System.Drawing.Point(199, 27);
+            this.BKOpenGLC.Margin = new System.Windows.Forms.Padding(4, 4, 4, 4);
             this.BKOpenGLC.Name = "BKOpenGLC";
-            this.BKOpenGLC.Size = new System.Drawing.Size(1292, 453);
+            this.BKOpenGLC.Size = new System.Drawing.Size(969, 368);
             this.BKOpenGLC.TabIndex = 79;
             this.BKOpenGLC.VSync = false;
             this.BKOpenGLC.Load += new System.EventHandler(this.BKOpenGLC_Load);
@@ -1726,11 +1718,23 @@ namespace BanjoKazooieLevelEditor
             this.openFileDialog2.FileName = "Model.dae";
             this.openFileDialog2.Filter = "Model File|*.dae";
             // 
+            // exportToolStripMenuItem
+            // 
+            this.exportToolStripMenuItem.Name = "exportToolStripMenuItem";
+            this.exportToolStripMenuItem.Size = new System.Drawing.Size(209, 22);
+            this.exportToolStripMenuItem.Text = "Export...";
+            this.exportToolStripMenuItem.Click += new System.EventHandler(this.exportToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator1
+            // 
+            this.toolStripSeparator1.Name = "toolStripSeparator1";
+            this.toolStripSeparator1.Size = new System.Drawing.Size(206, 6);
+            // 
             // ModelViewer
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
+            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1573, 642);
+            this.ClientSize = new System.Drawing.Size(1180, 522);
             this.Controls.Add(this.BKOpenGLC);
             this.Controls.Add(this.lbl_glVersion);
             this.Controls.Add(this.panel1);
@@ -1740,7 +1744,6 @@ namespace BanjoKazooieLevelEditor
             this.Controls.Add(this.CamSpeed_tb);
             this.Controls.Add(this.menuStrip1);
             this.MainMenuStrip = this.menuStrip1;
-            this.Margin = new System.Windows.Forms.Padding(4);
             this.Name = "ModelViewer";
             this.ShowIcon = false;
             this.Text = "Model Viewer";
@@ -1763,5 +1766,41 @@ namespace BanjoKazooieLevelEditor
             this.PerformLayout();
 
     }
+
+        private void exportToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (levelPointer == 0 && ObjectModelData == null)
+            {
+                return;
+            }
+            
+            SaveFileDialog dialog = new SaveFileDialog();
+            
+            dialog.Filter = GetSupportedModelExtensionsFilter();
+            dialog.FilterIndex = 45; //OBJ default
+            dialog.RestoreDirectory = true;
+            dialog.AddExtension = true;
+
+            if(dialog.ShowDialog() == DialogResult.OK)
+            {
+                int modelId = levelPointer == 0 ? ObjectModelData.pointer : levelPointer;
+                BKAssimpModel.Export(dialog.FileName, tmpDir, modelId);
+            }
+        }
+
+        private string GetSupportedModelExtensionsFilter()
+        {
+            string[] supportedExts = AssimpLibrary.Instance.GetExtensionList();
+
+            string filter = string.Empty;
+            foreach (string ext in supportedExts)
+            {
+                filter = $"{filter}{ext} (*{ext})|*{ext}|";
+            }
+
+            filter = $"{filter}All files (*.*)|*.*";
+
+            return filter;
+        }
   }
 }

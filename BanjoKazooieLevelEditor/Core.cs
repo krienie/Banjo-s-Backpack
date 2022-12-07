@@ -150,7 +150,7 @@ namespace BanjoKazooieLevelEditor
       OpenTK.Graphics.OpenGL.GL.Enable(OpenTK.Graphics.OpenGL.EnableCap.Texture2D);
       OpenTK.Graphics.OpenGL.GL.ShadeModel(OpenTK.Graphics.OpenGL.ShadingModel.Smooth);
       OpenTK.Graphics.OpenGL.GL.Enable(OpenTK.Graphics.OpenGL.EnableCap.Blend);
-      OpenTK.Graphics.OpenGL.GL.BlendFunc(OpenTK.Graphics.OpenGL.BlendingFactorSrc.SrcAlpha, OpenTK.Graphics.OpenGL.BlendingFactorDest.OneMinusSrcAlpha);
+      OpenTK.Graphics.OpenGL.GL.BlendFunc(OpenTK.Graphics.OpenGL.BlendingFactor.SrcAlpha, OpenTK.Graphics.OpenGL.BlendingFactor.OneMinusSrcAlpha);
       OpenTK.Graphics.OpenGL.GL.ClearColor(0.2f, 0.5f, 1f, 0.0f);
       OpenTK.Graphics.OpenGL.GL.BindTexture(OpenTK.Graphics.OpenGL.TextureTarget.Texture2D, 0);
       OpenTK.Graphics.OpenGL.GL.TexParameter(OpenTK.Graphics.OpenGL.TextureTarget.Texture2D, OpenTK.Graphics.OpenGL.TextureParameterName.TextureMinFilter, 9728);
@@ -1177,8 +1177,8 @@ namespace BanjoKazooieLevelEditor
       uint[] numArray1 = new uint[32];
       Texture[] textures = new Texture[1];
       int[] numArray2 = new int[32];
-      bool flag1 = true;
-      bool flag2 = false;
+      bool addNullMaterial = true;
+      bool createdNullMaterialInMtl = false;
       try
       {
         int collStart = 0;
@@ -1205,7 +1205,7 @@ namespace BanjoKazooieLevelEditor
           if (command[0] == (byte) 182)
           {
             newTexture = false;
-            flag1 = true;
+            addNullMaterial = true;
           }
           if (command[0] == (byte) 6)
             obj = obj + "g " + index1.ToString("x") + Environment.NewLine;
@@ -1213,7 +1213,7 @@ namespace BanjoKazooieLevelEditor
           {
             this.f3dex.GL_G_SETTIMG(ref currentTexture, textureCount, w1, ref textures, commands[index1 + 2], ref newTexture, sScale, tScale);
             newTexture = true;
-            flag1 = false;
+            addNullMaterial = false;
           }
           if (command[0] == (byte) 245)
             this.f3dex.GL_G_SETTILE(command, ref textures[currentTexture]);
@@ -1263,15 +1263,15 @@ namespace BanjoKazooieLevelEditor
               obj = obj + "usemtl material_" + currentTexture.ToString("D4") + Environment.NewLine;
               newTexture = false;
             }
-            if (flag1)
+            if (addNullMaterial)
             {
-              if (!flag2)
+              if (!createdNullMaterialInMtl)
               {
                 mtl = mtl + "newmtl material_null" + Environment.NewLine + Environment.NewLine;
-                flag2 = true;
+                createdNullMaterialInMtl = true;
               }
               obj = obj + "usemtl material_null" + Environment.NewLine;
-              flag1 = false;
+              addNullMaterial = false;
             }
           }
           if (command[0] == (byte) 191)

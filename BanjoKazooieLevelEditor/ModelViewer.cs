@@ -1784,7 +1784,11 @@ namespace BanjoKazooieLevelEditor
             if(dialog.ShowDialog() == DialogResult.OK)
             {
                 int modelId = levelPointer == 0 ? ObjectModelData.pointer : levelPointer;
-                BKAssimpModel.Export(dialog.FileName, tmpDir, modelId);
+                BKAssimpModel exportModel = new BKAssimpModel(tmpDir, modelId);
+                if (exportModel.IsModelLoaded && exportModel.ParseModel())
+                {
+                    exportModel.Export(dialog.FileName);
+                }
             }
         }
 

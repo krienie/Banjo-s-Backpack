@@ -1176,7 +1176,6 @@ namespace BanjoKazooieLevelEditor
       F3DEX_VERT[] verts = new F3DEX_VERT[32];
       uint[] numArray1 = new uint[32];
       Texture[] textures = new Texture[1];
-      int[] numArray2 = new int[32];
       bool addNullMaterial = true;
       bool createdNullMaterialInMtl = false;
       try

@@ -26,18 +26,19 @@ namespace BanjoKazooieLevelEditor.Serialization
 
         private class PreprocessMesh
         {
-            public PreprocessMesh(int numVerts)
+            public PreprocessMesh(int numVerts, int indexOffset)
             {
-                Positions = new List<int>(numVerts);
-                Colors = new List<int>(numVerts);
+                PosColor = new List<int>(numVerts);
                 TextureCoordinates = new List<int>(numVerts);
                 MaterialIndex = 0;
+                IndexOffset = indexOffset;
             }
 
-            public List<int> Positions { get; }
-            public List<int> Colors { get; }
+            public List<int> PosColor { get; }
             public List<int> TextureCoordinates { get; }
             public int MaterialIndex { get; set; }
+            public int IndexOffset { get; }
+            public int MaxIndex { get; set; }
         }
 
         private Scene mScene = new Scene();
@@ -90,9 +91,28 @@ namespace BanjoKazooieLevelEditor.Serialization
         private Vector2D ExtractUV(short vertIdx, int textureIdx, uint[] vertexIndices)
         {
             float u = mVerts[(int)vertexIndices[vertIdx]].u * mTextures[textureIdx].textureWRatio;
-            float v = mVerts[(int) vertexIndices[vertIdx]].v * mTextures[textureIdx].textureHRatio * -1.0f;
+            float v = mVerts[(int)vertexIndices[vertIdx]].v * mTextures[textureIdx].textureHRatio * -1.0f;
 
             return new Vector2D(u, v);
+        }
+
+        private void SetPreprocessIndices(short v1, short v2, short v3, int curTextureIdx, uint[] vertexIndices, List<Vector2D> calculatedUVs, PreprocessMesh mesh)
+        {
+            calculatedUVs.Add(ExtractUV(v1, curTextureIdx, vertexIndices));
+            calculatedUVs.Add(ExtractUV(v2, curTextureIdx, vertexIndices));
+            calculatedUVs.Add(ExtractUV(v3, curTextureIdx, vertexIndices));
+            mesh.TextureCoordinates.Add(calculatedUVs.Count - 3);
+            mesh.TextureCoordinates.Add(calculatedUVs.Count - 2);
+            mesh.TextureCoordinates.Add(calculatedUVs.Count - 1);
+
+            mesh.PosColor.Add((int)vertexIndices[v1]);
+            mesh.MaxIndex = Math.Max(mesh.PosColor[mesh.PosColor.Count - 1], mesh.MaxIndex);
+
+            mesh.PosColor.Add((int)vertexIndices[v2]);
+            mesh.MaxIndex = Math.Max(mesh.PosColor[mesh.PosColor.Count - 1], mesh.MaxIndex);
+
+            mesh.PosColor.Add((int)vertexIndices[v3]);
+            mesh.MaxIndex = Math.Max(mesh.PosColor[mesh.PosColor.Count - 1], mesh.MaxIndex);
         }
 
         public bool ParseModel()
@@ -105,21 +125,17 @@ namespace BanjoKazooieLevelEditor.Serialization
             mScene.Materials.Add(nullMaterial);
             const int NullMaterialIdx = 0;
 
-            //Mesh curMesh = null;
-            Material curMaterial = null;
-
             bool useNullMaterial = true;
             bool newTexture = false;
             int curTextureIdx = 0;
             float sScale = 0.0f;
             float tScale = 0.0f;
-            int curVertexUVIndex = 1;
             uint[] vertexIndices = new uint[32];
 
             PreprocessMesh curMesh = null;
             List<PreprocessMesh> preprocessMeshes = new List<PreprocessMesh>();
 
-            List<Vector2D> TextureCoordinates = new List<Vector2D>(mVerts.Length);
+            List<Vector2D> CalculatedUVs = new List<Vector2D>(mVerts.Length);
 
             for (int cmdIdx = 0; cmdIdx < mCommands.Count; ++cmdIdx)
             {
@@ -210,7 +226,7 @@ namespace BanjoKazooieLevelEditor.Serialization
                             //GEOBJ.writeTexture(outDir + "image_" + currentTexture.ToString("D4") + ".png", textures[currentTexture].pixels, textures[currentTexture].textureWidth, textures[currentTexture].textureHeight);
                             //mtl = mtl + "newmtl material_" + currentTexture.ToString("D4") + Environment.NewLine + "map_Kd image_" + currentTexture.ToString("D4") + ".png" + Environment.NewLine + Environment.NewLine;
 
-                            curMaterial = new Material();
+                            Material newMaterial = new Material();
 
                             TextureSlot newTextureSlot = new TextureSlot(
                                 "TODO",
@@ -223,14 +239,20 @@ namespace BanjoKazooieLevelEditor.Serialization
                                 mF3dEx.cms == 0 ? TextureWrapMode.Wrap : TextureWrapMode.Clamp,
                                 mF3dEx.cmt == 0 ? TextureWrapMode.Wrap : TextureWrapMode.Clamp,
                                 0);
-                            curMaterial.TextureDiffuse = newTextureSlot;
-                            curMaterial.Name = "Material_" + curTextureIdx.ToString("D4");
+                            newMaterial.TextureDiffuse = newTextureSlot;
+                            newMaterial.Name = "Material_" + curTextureIdx.ToString("D4");
 
-                            mScene.Materials.Add(curMaterial);
+                            mScene.Materials.Add(newMaterial);
                         }
                         //obj = obj + "usemtl material_" + currentTexture.ToString("D4") + Environment.NewLine;
                         //curMesh = new Mesh("Mesh_" + curTextureIdx.ToString("D4"));
-                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length));
+                        int indexOffset = 0;
+                        if (preprocessMeshes.Count > 0)
+                        {
+                            indexOffset = preprocessMeshes[preprocessMeshes.Count - 1].MaxIndex + 1;
+                        }
+                        
+                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length, indexOffset));
                         curMesh = preprocessMeshes[preprocessMeshes.Count - 1];
                         curMesh.MaterialIndex = mScene.MaterialCount - 1;
                         newTexture = false;
@@ -244,34 +266,54 @@ namespace BanjoKazooieLevelEditor.Serialization
                 }
                 else if (curCommandId == Commands.TriangleFace)
                 {
-                    //TODO(KL): Set triangle vertex pos and UV idices here
+                    short v1 = (short) ((int) command[5] / 2);
+                    short v2 = (short) ((int) command[6] / 2);
+                    short v3 = (short) ((int) command[7] / 2);
 
-                    short v1 = (short) ((int) command[5] / 2); //num4
-                    short v2 = (short) ((int) command[6] / 2); //num5
-                    short v3 = (short) ((int) command[7] / 2); //num6
-
-                    TextureCoordinates.Add(ExtractUV(v1, curTextureIdx, vertexIndices));
-                    TextureCoordinates.Add(ExtractUV(v2, curTextureIdx, vertexIndices));
-                    TextureCoordinates.Add(ExtractUV(v3, curTextureIdx, vertexIndices));
-                    curMesh.TextureCoordinates.Add(TextureCoordinates.Count - 3);
-                    curMesh.TextureCoordinates.Add(TextureCoordinates.Count - 2);
-                    curMesh.TextureCoordinates.Add(TextureCoordinates.Count - 1);
-
-                    //TODO(KL): add vertex positions and colors
-
-                    //obj = obj + "vt " + (object) ((float) verts[(int) numArray1[(int) num4]].u * textures[currentTexture].textureWRatio) + " " + (object) (float) ((double) verts[(int) numArray1[(int) num4]].v * (double) textures[currentTexture].textureHRatio * -1.0) + Environment.NewLine;
-                    //obj = obj + "vt " + (object) ((float) verts[(int) numArray1[(int) num5]].u * textures[currentTexture].textureWRatio) + " " + (object) (float) ((double) verts[(int) numArray1[(int) num5]].v * (double) textures[currentTexture].textureHRatio * -1.0) + Environment.NewLine;
-                    //obj = obj + "vt " + (object) ((float) verts[(int) numArray1[(int) num6]].u * textures[currentTexture].textureWRatio) + " " + (object) (float) ((double) verts[(int) numArray1[(int) num6]].v * (double) textures[currentTexture].textureHRatio * -1.0) + Environment.NewLine;
-                    //obj += GEOBJ.convertFace(numArray1[(int) num4] + 1U, numArray1[(int) num5] + 1U, numArray1[(int) num6] + 1U, vtIndex1);
-                    curVertexUVIndex += 3;
-
+                    SetPreprocessIndices(v1, v2, v3, curTextureIdx, vertexIndices, CalculatedUVs, curMesh);
                 }
                 else if (curCommandId == Commands.QuadFace)
                 {
-                    //TODO(KL): Set quad vertex pos and UV indices here
+                    short v1 = (short) ((int) command[1] / 2);
+                    short v2 = (short) ((int) command[2] / 2);
+                    short v3 = (short) ((int) command[3] / 2);
+                    SetPreprocessIndices(v1, v2, v3, curTextureIdx, vertexIndices, CalculatedUVs, curMesh);
+
+                    v1 = (short) ((int) command[5] / 2);
+                    v2 = (short) ((int) command[6] / 2);
+                    v3 = (short) ((int) command[7] / 2);
+                    SetPreprocessIndices(v1, v2, v3, curTextureIdx, vertexIndices, CalculatedUVs, curMesh);
                 }
             }
 
+            foreach (PreprocessMesh ppMesh in preprocessMeshes)
+            {
+                Mesh newMesh = new Mesh("", PrimitiveType.Triangle);
+                newMesh.MaterialIndex = ppMesh.MaterialIndex;
+                
+                for (int i = 0; i < ppMesh.PosColor.Count; i += 3)
+                {
+                    int[] faceIndices = new int[3];
+                    for (int j = 0; j < 3; ++j)
+                    {
+                        int vertIndex = i + j;
+
+                        F3DEX_VERT vert = mVerts[ppMesh.PosColor[vertIndex]];
+                        newMesh.Vertices.Add(new Vector3D(vert.x, vert.y, vert.z));
+                        newMesh.VertexColorChannels[0].Add(new Color4D(vert.r, vert.g, vert.b, vert.a));
+
+                        Vector2D uv = CalculatedUVs[ppMesh.TextureCoordinates[vertIndex]];
+                        newMesh.TextureCoordinateChannels[0].Add(new Vector3D(uv.X, uv.Y, 0));
+
+                        faceIndices[j] = ppMesh.PosColor[vertIndex] - ppMesh.IndexOffset;
+                    }
+
+                    newMesh.Faces.Add(new Assimp.Face(faceIndices));
+                }
+
+                mScene.Meshes.Add(newMesh);
+                mScene.RootNode.MeshIndices.Add(mScene.RootNode.MeshCount);
+            }
 
             //TODO(KL): Foreach mesh: resolve vertices
 
@@ -297,30 +339,32 @@ namespace BanjoKazooieLevelEditor.Serialization
 
         public void Export(string outFileName)
         {
-            AssimpContext exporter = new AssimpContext();
+            //TODO(KL): resolve textures in material and write textures to disk
 
-            Scene scene = new Scene();
-            scene.RootNode = new Node("Root");
+            //AssimpContext exporter = new AssimpContext();
 
-            Mesh triangle = new Mesh("", PrimitiveType.Triangle);
-            triangle.Vertices.Add(new Vector3D(1, 0, 0));
-            triangle.Vertices.Add(new Vector3D(5, 5, 0));
-            triangle.Vertices.Add(new Vector3D(10, 0, 0));
-            triangle.Faces.Add(new Assimp.Face(new int[] { 0, 1, 2 }));
-            triangle.MaterialIndex = 0;
-
-            scene.Meshes.Add(triangle);
-            scene.RootNode.MeshIndices.Add(0);
-
-            //TODO(KL): Fill in Material object
-            Material mat = new Material();
-            mat.Name = "MyMaterial";
-            scene.Materials.Add(mat);
+            //Scene scene = new Scene();
+            //scene.RootNode = new Node("Root");
+            //
+            //Mesh triangle = new Mesh("", PrimitiveType.Triangle);
+            //triangle.Vertices.Add(new Vector3D(1, 0, 0));
+            //triangle.Vertices.Add(new Vector3D(5, 5, 0));
+            //triangle.Vertices.Add(new Vector3D(10, 0, 0));
+            //triangle.Faces.Add(new Assimp.Face(new int[] { 0, 1, 2 }));
+            //triangle.MaterialIndex = 0;
+            //
+            //scene.Meshes.Add(triangle);
+            //scene.RootNode.MeshIndices.Add(0);
+            //
+            ////TODO(KL): Fill in Material object
+            //Material mat = new Material();
+            //mat.Name = "MyMaterial";
+            //scene.Materials.Add(mat);
 
             //TODO(KL): Add animations if there are any
 
             AssimpContext context = new AssimpContext();
-            context.ExportFile(scene, outFileName, "obj");
+            context.ExportFile(mScene, outFileName, "obj");
         }
     }
 }

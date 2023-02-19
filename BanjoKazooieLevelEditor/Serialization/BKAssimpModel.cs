@@ -73,8 +73,6 @@ namespace BanjoKazooieLevelEditor.Serialization
             int vertStart = 0;
             int vertexCount = 0;
             int textureCount = 0;
-            F3DEX_VERT[] verts = null;
-            Texture[] textures = null;
             mModelSuccessfullyLoaded = mF3dEx.ReadModel(ref mBinaryModelData,
                 ref collStart,
                 ref f3dStart,
@@ -124,6 +122,27 @@ namespace BanjoKazooieLevelEditor.Serialization
             nullMaterial.Name = "NullMaterial";
             mScene.Materials.Add(nullMaterial);
             const int NullMaterialIdx = 0;
+
+            for (int i = 0; i < mTextures.Length; ++i)
+            {
+                Material newMaterial = new Material();
+
+                TextureSlot newTextureSlot = new TextureSlot(
+                    "TODO",
+                    TextureType.Diffuse,
+                    0,
+                    TextureMapping.FromUV,
+                    0,
+                    0.0f,
+                    TextureOperation.Add,
+                    mF3dEx.cms == 0 ? TextureWrapMode.Wrap : TextureWrapMode.Clamp,
+                    mF3dEx.cmt == 0 ? TextureWrapMode.Wrap : TextureWrapMode.Clamp,
+                    0);
+                newMaterial.TextureDiffuse = newTextureSlot;
+                newMaterial.Name = "Material_" + i.ToString("D4");
+
+                mScene.Materials.Add(newMaterial);
+            }
 
             bool useNullMaterial = true;
             bool newTexture = false;
@@ -225,24 +244,6 @@ namespace BanjoKazooieLevelEditor.Serialization
                             //TODO(KL): Write the textures during export
                             //GEOBJ.writeTexture(outDir + "image_" + currentTexture.ToString("D4") + ".png", textures[currentTexture].pixels, textures[currentTexture].textureWidth, textures[currentTexture].textureHeight);
                             //mtl = mtl + "newmtl material_" + currentTexture.ToString("D4") + Environment.NewLine + "map_Kd image_" + currentTexture.ToString("D4") + ".png" + Environment.NewLine + Environment.NewLine;
-
-                            Material newMaterial = new Material();
-
-                            TextureSlot newTextureSlot = new TextureSlot(
-                                "TODO",
-                                TextureType.Diffuse,
-                                0,
-                                TextureMapping.FromUV,
-                                0,
-                                0.0f,
-                                TextureOperation.Add,
-                                mF3dEx.cms == 0 ? TextureWrapMode.Wrap : TextureWrapMode.Clamp,
-                                mF3dEx.cmt == 0 ? TextureWrapMode.Wrap : TextureWrapMode.Clamp,
-                                0);
-                            newMaterial.TextureDiffuse = newTextureSlot;
-                            newMaterial.Name = "Material_" + curTextureIdx.ToString("D4");
-
-                            mScene.Materials.Add(newMaterial);
                         }
                         //obj = obj + "usemtl material_" + currentTexture.ToString("D4") + Environment.NewLine;
                         //curMesh = new Mesh("Mesh_" + curTextureIdx.ToString("D4"));
@@ -254,12 +255,21 @@ namespace BanjoKazooieLevelEditor.Serialization
                         
                         preprocessMeshes.Add(new PreprocessMesh(mVerts.Length, indexOffset));
                         curMesh = preprocessMeshes[preprocessMeshes.Count - 1];
-                        curMesh.MaterialIndex = mScene.MaterialCount - 1;
+                        curMesh.MaterialIndex = curTextureIdx + 1;
                         newTexture = false;
                     }
-                    else if (useNullMaterial)
+                    
+                    if (useNullMaterial)
                     {
-                        Debug.Assert(curMesh != null);
+                        //TODO(KL): cleanup -> remove code duplication
+                        int indexOffset = 0;
+                        if (preprocessMeshes.Count > 0)
+                        {
+                            indexOffset = preprocessMeshes[preprocessMeshes.Count - 1].MaxIndex + 1;
+                        }
+
+                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length, indexOffset));
+                        curMesh = preprocessMeshes[preprocessMeshes.Count - 1];
                         curMesh.MaterialIndex = NullMaterialIdx;
                         useNullMaterial = false;
                     }
@@ -298,14 +308,21 @@ namespace BanjoKazooieLevelEditor.Serialization
                     {
                         int vertIndex = i + j;
 
-                        F3DEX_VERT vert = mVerts[ppMesh.PosColor[vertIndex]];
-                        newMesh.Vertices.Add(new Vector3D(vert.x, vert.y, vert.z));
-                        newMesh.VertexColorChannels[0].Add(new Color4D(vert.r, vert.g, vert.b, vert.a));
+                        int PosColorIndex = ppMesh.PosColor[vertIndex];
 
-                        Vector2D uv = CalculatedUVs[ppMesh.TextureCoordinates[vertIndex]];
-                        newMesh.TextureCoordinateChannels[0].Add(new Vector3D(uv.X, uv.Y, 0));
+                        F3DEX_VERT vert = mVerts[PosColorIndex];
+                        int normalizedMeshIndex = PosColorIndex - ppMesh.IndexOffset;
 
-                        faceIndices[j] = ppMesh.PosColor[vertIndex] - ppMesh.IndexOffset;
+                        if (normalizedMeshIndex >= newMesh.Vertices.Count)
+                        {
+                            newMesh.Vertices.Add(new Vector3D(vert.x, vert.y, vert.z));
+                            newMesh.VertexColorChannels[0].Add(new Color4D(vert.r, vert.g, vert.b, vert.a));
+
+                            Vector2D uv = CalculatedUVs[ppMesh.TextureCoordinates[vertIndex]];
+                            newMesh.TextureCoordinateChannels[0].Add(new Vector3D(uv.X, uv.Y, 0));
+                        }
+
+                        faceIndices[j] = normalizedMeshIndex;
                     }
 
                     newMesh.Faces.Add(new Assimp.Face(faceIndices));
@@ -363,6 +380,7 @@ namespace BanjoKazooieLevelEditor.Serialization
 
             //TODO(KL): Add animations if there are any
 
+            //TODO(KL): extract file extenson from outFileName
             AssimpContext context = new AssimpContext();
             context.ExportFile(mScene, outFileName, "obj");
         }

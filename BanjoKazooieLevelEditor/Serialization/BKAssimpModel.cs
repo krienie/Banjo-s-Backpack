@@ -26,19 +26,18 @@ namespace BanjoKazooieLevelEditor.Serialization
 
         private class PreprocessMesh
         {
-            public PreprocessMesh(int numVerts, int indexOffset)
+            public PreprocessMesh(int numVerts)
             {
                 PosColor = new List<int>(numVerts);
                 TextureCoordinates = new List<int>(numVerts);
                 MaterialIndex = 0;
-                IndexOffset = indexOffset;
             }
 
             public List<int> PosColor { get; }
             public List<int> TextureCoordinates { get; }
             public int MaterialIndex { get; set; }
-            public int IndexOffset { get; }
-            public int MaxIndex { get; set; }
+
+            public int IndexOffset => PosColor.Min();
         }
 
         private Scene mScene = new Scene();
@@ -51,7 +50,6 @@ namespace BanjoKazooieLevelEditor.Serialization
         private F3DEX_VERT[] mVerts;
         private List<byte[]> mCommands = new List<byte[]>();
         private Texture[] mTextures;
-
 
         public bool IsModelLoaded => mModelSuccessfullyLoaded;
 
@@ -104,13 +102,8 @@ namespace BanjoKazooieLevelEditor.Serialization
             mesh.TextureCoordinates.Add(calculatedUVs.Count - 1);
 
             mesh.PosColor.Add((int)vertexIndices[v1]);
-            mesh.MaxIndex = Math.Max(mesh.PosColor[mesh.PosColor.Count - 1], mesh.MaxIndex);
-
             mesh.PosColor.Add((int)vertexIndices[v2]);
-            mesh.MaxIndex = Math.Max(mesh.PosColor[mesh.PosColor.Count - 1], mesh.MaxIndex);
-
             mesh.PosColor.Add((int)vertexIndices[v3]);
-            mesh.MaxIndex = Math.Max(mesh.PosColor[mesh.PosColor.Count - 1], mesh.MaxIndex);
         }
 
         public bool ParseModel()
@@ -245,15 +238,8 @@ namespace BanjoKazooieLevelEditor.Serialization
                             //GEOBJ.writeTexture(outDir + "image_" + currentTexture.ToString("D4") + ".png", textures[currentTexture].pixels, textures[currentTexture].textureWidth, textures[currentTexture].textureHeight);
                             //mtl = mtl + "newmtl material_" + currentTexture.ToString("D4") + Environment.NewLine + "map_Kd image_" + currentTexture.ToString("D4") + ".png" + Environment.NewLine + Environment.NewLine;
                         }
-                        //obj = obj + "usemtl material_" + currentTexture.ToString("D4") + Environment.NewLine;
-                        //curMesh = new Mesh("Mesh_" + curTextureIdx.ToString("D4"));
-                        int indexOffset = 0;
-                        if (preprocessMeshes.Count > 0)
-                        {
-                            indexOffset = preprocessMeshes[preprocessMeshes.Count - 1].MaxIndex + 1;
-                        }
-                        
-                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length, indexOffset));
+
+                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length));
                         curMesh = preprocessMeshes[preprocessMeshes.Count - 1];
                         curMesh.MaterialIndex = curTextureIdx + 1;
                         newTexture = false;
@@ -261,14 +247,7 @@ namespace BanjoKazooieLevelEditor.Serialization
                     
                     if (useNullMaterial)
                     {
-                        //TODO(KL): cleanup -> remove code duplication
-                        int indexOffset = 0;
-                        if (preprocessMeshes.Count > 0)
-                        {
-                            indexOffset = preprocessMeshes[preprocessMeshes.Count - 1].MaxIndex + 1;
-                        }
-
-                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length, indexOffset));
+                        preprocessMeshes.Add(new PreprocessMesh(mVerts.Length));
                         curMesh = preprocessMeshes[preprocessMeshes.Count - 1];
                         curMesh.MaterialIndex = NullMaterialIdx;
                         useNullMaterial = false;
@@ -295,7 +274,7 @@ namespace BanjoKazooieLevelEditor.Serialization
                     SetPreprocessIndices(v1, v2, v3, curTextureIdx, vertexIndices, CalculatedUVs, curMesh);
                 }
             }
-
+            
             foreach (PreprocessMesh ppMesh in preprocessMeshes)
             {
                 Mesh newMesh = new Mesh("", PrimitiveType.Triangle);
@@ -332,57 +311,18 @@ namespace BanjoKazooieLevelEditor.Serialization
                 mScene.RootNode.MeshIndices.Add(mScene.RootNode.MeshCount);
             }
 
-            //TODO(KL): Foreach mesh: resolve vertices
-
-            //Mesh newMesh = new Mesh("", PrimitiveType.Triangle);
-            //newMesh.Vertices.Capacity = mVerts.Count;
-            //newMesh.TextureCoordinateChannels[0].Capacity = mVerts.Count;
-            //newMesh.VertexColorChannels[0].Capacity = mVerts.Count;
-            //
-            //foreach (F3DEX_VERT f3dExVert in mVerts)
-            //{
-            //    newMesh.Vertices.Add(new Vector3D(f3dExVert.x, f3dExVert.y, f3dExVert.z));
-            //    newMesh.TextureCoordinateChannels[0].Add(new Vector3D(f3dExVert.u, f3dExVert.v, 0));
-            //    newMesh.VertexColorChannels[0].Add(new Color4D(f3dExVert.r, f3dExVert.g, f3dExVert.b, f3dExVert.a));
-            //}
-
-            //loop over commands
-            // create Meshes on the fly
-            // create Materials on the fly
-
-
             return true;
         }
 
         public void Export(string outFileName)
         {
             //TODO(KL): resolve textures in material and write textures to disk
-
-            //AssimpContext exporter = new AssimpContext();
-
-            //Scene scene = new Scene();
-            //scene.RootNode = new Node("Root");
-            //
-            //Mesh triangle = new Mesh("", PrimitiveType.Triangle);
-            //triangle.Vertices.Add(new Vector3D(1, 0, 0));
-            //triangle.Vertices.Add(new Vector3D(5, 5, 0));
-            //triangle.Vertices.Add(new Vector3D(10, 0, 0));
-            //triangle.Faces.Add(new Assimp.Face(new int[] { 0, 1, 2 }));
-            //triangle.MaterialIndex = 0;
-            //
-            //scene.Meshes.Add(triangle);
-            //scene.RootNode.MeshIndices.Add(0);
-            //
-            ////TODO(KL): Fill in Material object
-            //Material mat = new Material();
-            //mat.Name = "MyMaterial";
-            //scene.Materials.Add(mat);
-
+            
             //TODO(KL): Add animations if there are any
-
-            //TODO(KL): extract file extenson from outFileName
+            
+            String ext = Path.GetExtension(outFileName);
             AssimpContext context = new AssimpContext();
-            context.ExportFile(mScene, outFileName, "obj");
+            context.ExportFile(mScene, outFileName, ext.TrimStart('.'));
         }
     }
 }

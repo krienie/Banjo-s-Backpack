@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Assimp;
+using Assimp.Unmanaged;
 
 namespace BanjoKazooieLevelEditor.Serialization
 {
@@ -314,15 +315,14 @@ namespace BanjoKazooieLevelEditor.Serialization
             return true;
         }
 
-        public void Export(string outFileName)
+        public void Export(string outFileName, string formatId)
         {
             //TODO(KL): resolve textures in material and write textures to disk
             
             //TODO(KL): Add animations if there are any
             
-            String ext = Path.GetExtension(outFileName);
             AssimpContext context = new AssimpContext();
-            context.ExportFile(mScene, outFileName, ext.TrimStart('.'));
+            context.ExportFile(mScene, outFileName, formatId);
         }
     }
 }

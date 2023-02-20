@@ -20,6 +20,8 @@ using System.Windows.Forms;
 using System.Xml;
 using BanjoKazooieLevelEditor.Serialization;
 using Assimp.Unmanaged;
+using Assimp;
+using PrimitiveType = OpenTK.Graphics.OpenGL.PrimitiveType;
 
 namespace BanjoKazooieLevelEditor
 {
@@ -1777,7 +1779,7 @@ namespace BanjoKazooieLevelEditor
             SaveFileDialog dialog = new SaveFileDialog();
             
             dialog.Filter = GetSupportedModelExtensionsFilter();
-            dialog.FilterIndex = 45; //OBJ default
+            dialog.FilterIndex = 0;
             dialog.RestoreDirectory = true;
             dialog.AddExtension = true;
 
@@ -1787,19 +1789,20 @@ namespace BanjoKazooieLevelEditor
                 BKAssimpModel exportModel = new BKAssimpModel(tmpDir, modelId);
                 if (exportModel.IsModelLoaded && exportModel.ParseModel())
                 {
-                    exportModel.Export(dialog.FileName);
+                    ExportFormatDescription[] exportFormats = AssimpLibrary.Instance.GetExportFormatDescriptions();
+                    exportModel.Export(dialog.FileName, exportFormats[dialog.FilterIndex].FormatId);
                 }
             }
         }
 
         private string GetSupportedModelExtensionsFilter()
         {
-            string[] supportedExts = AssimpLibrary.Instance.GetExtensionList();
-
+            ExportFormatDescription[] exportFormats = AssimpLibrary.Instance.GetExportFormatDescriptions();
+            
             string filter = string.Empty;
-            foreach (string ext in supportedExts)
+            foreach (ExportFormatDescription desc in exportFormats)
             {
-                filter = $"{filter}{ext} (*{ext})|*{ext}|";
+                filter = $"{filter}{desc.Description} (*.{desc.FileExtension})|*.{desc.FileExtension}|";
             }
 
             filter = $"{filter}All files (*.*)|*.*";
